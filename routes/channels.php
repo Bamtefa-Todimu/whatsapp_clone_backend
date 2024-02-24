@@ -16,3 +16,10 @@ use Illuminate\Support\Facades\Broadcast;
 Broadcast::channel('App.Models.User.{id}', function ($user, $id) {
     return (int) $user->id === (int) $id;
 });
+
+
+Broadcast::channel('Send-Message.{id}', function ($user, $id) {
+    $ids = collect($user->chats)->map(fn ($item) => $item->id);
+    return $ids->contains($id);
+    // return (int) $user->chats()->find($id) === (int) $id;
+});
