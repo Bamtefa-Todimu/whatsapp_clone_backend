@@ -7,4 +7,6 @@ use Illuminate\Database\Eloquent\Relations\Pivot;
 class chat_user extends Pivot
 {
     //
+
+
 }
