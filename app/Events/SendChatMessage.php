@@ -11,21 +11,23 @@ use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
-class SendChatMessage
+class SendChatMessage implements ShouldBroadcast
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
     private User $user;
     private string $message;
+    private  $chat;
 
     /**
      * Create a new event instance.
      */
-    public function __construct($user, $message)
+    public function __construct($user, $message, $chat_id)
     {
         //
         $this->user = $user;
         $this->message = $message;
+        $this->chat = $chat_id;
     }
 
     /**
@@ -37,7 +39,17 @@ class SendChatMessage
     {
 
         return [
-            new PrivateChannel('Send-Message.' . $this->user->id),
+            // new PrivateChannel('Send-Message.' . $this->user->id),
+            new Channel('testing.' . $this->user->id),
+        ];
+    }
+
+    public function broadcastWith()
+    {
+        return [
+            'chat' => $this->chat,
+            // 'message' => $this->message,
+            // 'user' => $this->user->only(['name', 'email'])
         ];
     }
 }

@@ -1,5 +1,8 @@
 <?php
 
+use App\Models\User;
+use App\Events\SendChatMessage;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -15,4 +18,14 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
     return view('welcome');
+});
+
+Route::get('/app', function () {
+    return view('app');
+});
+
+Route::post('/test', function (Request $request) {
+    event(new SendChatMessage(User::query()->get()->first(), $request->message, 1));
+
+    return  response("Done", 200);
 });

@@ -17,6 +17,11 @@ Broadcast::channel('App.Models.User.{id}', function ($user, $id) {
     return (int) $user->id === (int) $id;
 });
 
+Broadcast::channel('testing.{id}', function ($user, $id) {
+    // dump($user);
+    return true;
+});
+
 
 Broadcast::channel('Send-Message.{id}', function ($user, $id) {
     $ids = collect($user->chats)->map(fn ($item) => $item->id);
