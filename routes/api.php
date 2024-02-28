@@ -12,9 +12,10 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use App\Actions\Fortify\PasswordValidationRules;
+use App\Models\chat_user;
 use Illuminate\Validation\Rules\Password;
 
-
+use function PHPSTORM_META\map;
 
 /*
 |--------------------------------------------------------------------------
@@ -46,17 +47,21 @@ Route::middleware(['auth:sanctum'])
                 // dump($chat->id);
                 $chat->users()->sync([$user->id, auth()->user()->id]);
 
-                broadcast(new SendChatMessage(
-                    $user,
-                    $request->message,
-                    [...collect(auth()->user()), ...["message" => $request->message]]
-                ))->toOthers();
+
 
                 $ChatMessage = ChatMessage::query()->create([
                     "chat_id" => $chat->id,
                     "user_id" => auth()->user()->id,
+                    "recipient_id" => $user->id,
                     "message" => $request->message
                 ]);
+
+                broadcast(new SendChatMessage(
+                    $user,
+                    $request->message,
+                    [...collect($ChatMessage), ...["user" => auth()->user()]]
+                    // [...collect(auth()->user()), ...["message" => $request->message]]
+                ))->toOthers();
 
                 return new JsonResponse([
                     "data" => [
@@ -70,11 +75,7 @@ Route::middleware(['auth:sanctum'])
                         if (User::query()->find($user->id)->chats()->where('id', $id)->count()) {
                             dump($id);
 
-                            broadcast(new SendChatMessage(
-                                $user,
-                                $request->message,
-                                [...collect(auth()->user()), ...["message" => $request->message]]
-                            ))->toOthers();
+
 
                             // SendChatMessage::dispatch(
                             //     $user,
@@ -85,8 +86,16 @@ Route::middleware(['auth:sanctum'])
                             $ChatMessage = ChatMessage::query()->create([
                                 "chat_id" => $id,
                                 "user_id" => auth()->user()->id,
+                                "recipient_id" => $user->id,
                                 "message" => $request->message
                             ]);
+
+                            broadcast(new SendChatMessage(
+                                $user,
+                                $request->message,
+                                [...collect($ChatMessage), ...["user" => auth()->user()]]
+                                // [...collect(auth()->user()), ...["message" => $request->message]]
+                            ))->toOthers();
 
                             return new JsonResponse([
                                 "data" => [
@@ -125,6 +134,33 @@ Route::middleware(['auth:sanctum'])
         Route::get('/chat/{chat}/message', function (Request $request, Chat $chat) {
             $messages = ChatMessage::where('chat_id', $chat->id)->get(['user_id', 'message', 'created_at']);
             return new JsonResponse(["data" => $messages]);
+        });
+
+        Route::get('/users/messages', function (Request $request) {
+
+            $pivotIds = collect(User::query()->find(auth()->user()->id)->chats)->map(fn ($item) => $item->pivot->chat_id);
+
+            $Senders = chat_user::whereIn('chat_id', $pivotIds)->WhereNotIn('user_id', [Auth::id()])->distinct()->orderBy('chat_id', 'DESC')->get();
+            // $pivotUsers = collect(User::query()->find(auth()->user()->id)->chats)->map(fn ($item) => $item->pivot->user_id);
+            $messages = ChatMessage::whereIn('chat_id', $pivotIds)->latest()->get(['user_id', 'chat_id', 'message', 'created_at'])->groupBy('chat_id');
+            $results = [];
+            $finalresults = [];
+            foreach ($messages as $group) {
+                $results[] = head($group);
+            }
+            foreach ($results as $msg) {
+                $finalresults[] = head($msg);
+            }
+
+            $newMsg = collect($finalresults)->map(fn ($mg, $id) => [...collect($mg), ...["user" => User::query()->find($Senders->where('chat_id', $mg->chat_id)->first()?->user_id)]]);
+            // return $finalresults;
+            return new JsonResponse([
+                // "pivotIds" => $pivotIds,
+                // "newMg" => $newMsg,
+                "senders" => $Senders,
+                "senders" => collect($Senders)->where('chat_id', 11)->first(),
+                "data" => $newMsg
+            ]);
         });
 
         Route::get('/users', function (Request $request) {

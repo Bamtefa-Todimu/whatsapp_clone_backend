@@ -13,6 +13,7 @@ return new class extends Migration
     {
         Schema::create('chat_messages', function (Blueprint $table) {
             $table->id();
+
             $table->foreignId('chat_id');
             $table->foreign('chat_id')
                 ->references('id')
