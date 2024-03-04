@@ -10,9 +10,13 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Validator;
-use Illuminate\Validation\Rule;
 use App\Actions\Fortify\PasswordValidationRules;
+use App\Http\Controllers\AuthController;
+use App\Http\Controllers\ChatController;
+use App\Http\Controllers\ChatMessageController;
+use App\Http\Controllers\UserController;
 use App\Models\chat_user;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
 
 use function PHPSTORM_META\map;
@@ -32,142 +36,19 @@ use function PHPSTORM_META\map;
 Route::middleware(['auth:sanctum'])
     ->group(function () {
 
-        Route::post('/chat/{user}', function (Request $request, User $user) {
+        Route::post('/chat/{user}', [ChatController::class, 'create']);
 
-            $pivotIds = collect(User::query()->find(auth()->user()->id)->chats)->map(fn ($item) => $item->pivot->chat_id);
-            $isSubbed = $pivotIds->some(
-                fn ($id) =>
-                User::query()->find($user->id)->chats()->find($id)
+        Route::get('/user/{user}', [UserController::class, 'show']);
 
-            );
+        Route::get('/chats', [ChatController::class, 'index']);
 
+        Route::get('/chat/{chat}/message', [ChatController::class, 'show']);
 
-            if (!$isSubbed) {
-                $chat = Chat::query()->create();
-                // dump($chat->id);
-                $chat->users()->sync([$user->id, auth()->user()->id]);
+        Route::get('/users/messages', [ChatMessageController::class, 'index']);
 
+        Route::get('/users', [UserController::class, 'index']);
 
-
-                $ChatMessage = ChatMessage::query()->create([
-                    "chat_id" => $chat->id,
-                    "user_id" => auth()->user()->id,
-                    "recipient_id" => $user->id,
-                    "message" => $request->message
-                ]);
-
-                broadcast(new SendChatMessage(
-                    $user,
-                    $request->message,
-                    [...collect($ChatMessage), ...["user" => auth()->user()]]
-                    // [...collect(auth()->user()), ...["message" => $request->message]]
-                ))->toOthers();
-
-                return new JsonResponse([
-                    "data" => [
-                        "chatMessage" => $ChatMessage
-                    ]
-                ]);
-            } else {
-                $pivotIds->each(
-                    function ($id) use ($user, $request) {
-
-                        if (User::query()->find($user->id)->chats()->where('id', $id)->count()) {
-                            dump($id);
-
-
-
-                            // SendChatMessage::dispatch(
-                            //     $user,
-                            //     $request->message,
-                            //     [...collect(auth()->user()), ...["message" => $request->message]]
-                            // );
-
-                            $ChatMessage = ChatMessage::query()->create([
-                                "chat_id" => $id,
-                                "user_id" => auth()->user()->id,
-                                "recipient_id" => $user->id,
-                                "message" => $request->message
-                            ]);
-
-                            broadcast(new SendChatMessage(
-                                $user,
-                                $request->message,
-                                [...collect($ChatMessage), ...["user" => auth()->user()]]
-                                // [...collect(auth()->user()), ...["message" => $request->message]]
-                            ))->toOthers();
-
-                            return new JsonResponse([
-                                "data" => [
-                                    "chatMessage" => $ChatMessage
-                                ]
-                            ]);
-                        }
-                    }
-
-                );
-            }
-        });
-
-        Route::get('/user/{user}', function (Request $request, User $user) {
-            return new JsonResponse([
-                "data" => $user
-            ]);
-        });
-
-        Route::get('/chats', function (Request $request) {
-            // $userId= Auth::guard('api')->user()?->id;
-            $userId = auth()->user()->id;
-
-            $chats  = User::query()->find(auth()->user()->id)->chats()->latest()->get();
-
-            // $latestMessages = $chats->map(fn ($chat) => ChatMessage::where('chat_id', $chat->id)->latest()->get()->first());
-
-            $users  = $chats->map(fn ($chat) => [...collect(Chat::query()->find($chat->id)->users()->where('id', '!=', $userId)->get(['id', 'name', 'email', 'updated_at', 'created_at'])->first()), ...collect(ChatMessage::where('chat_id', $chat->id)->latest()->get(['message'])->first())]);
-
-            return new JsonResponse([
-                "active_chats" => $users,
-                // "latest_messages" => $latestMessages
-            ]);
-        });
-
-        Route::get('/chat/{chat}/message', function (Request $request, Chat $chat) {
-            $messages = ChatMessage::where('chat_id', $chat->id)->get(['user_id', 'message', 'created_at']);
-            return new JsonResponse(["data" => $messages]);
-        });
-
-        Route::get('/users/messages', function (Request $request) {
-
-            $pivotIds = collect(User::query()->find(auth()->user()->id)->chats)->map(fn ($item) => $item->pivot->chat_id);
-
-            $Senders = chat_user::whereIn('chat_id', $pivotIds)->WhereNotIn('user_id', [Auth::id()])->distinct()->orderBy('chat_id', 'DESC')->get();
-            // $pivotUsers = collect(User::query()->find(auth()->user()->id)->chats)->map(fn ($item) => $item->pivot->user_id);
-            $messages = ChatMessage::whereIn('chat_id', $pivotIds)->latest()->get(['user_id', 'chat_id', 'message', 'created_at'])->groupBy('chat_id');
-            $results = [];
-            $finalresults = [];
-            foreach ($messages as $group) {
-                $results[] = head($group);
-            }
-            foreach ($results as $msg) {
-                $finalresults[] = head($msg);
-            }
-
-            $newMsg = collect($finalresults)->map(fn ($mg, $id) => [...collect($mg), ...["user" => User::query()->find($Senders->where('chat_id', $mg->chat_id)->first()?->user_id)]]);
-            // return $finalresults;
-            return new JsonResponse([
-                // "pivotIds" => $pivotIds,
-                // "newMg" => $newMsg,
-                "senders" => $Senders,
-                "senders" => collect($Senders)->where('chat_id', 11)->first(),
-                "data" => $newMsg
-            ]);
-        });
-
-        Route::get('/users', function (Request $request) {
-            return  new JsonResponse([
-                "data" => (User::all())
-            ]);
-        });
+        Route::put('/users/update', [UserController::class, 'update']);
 
         Route::get('/testSockets', function (Request $request) {
             event(new SendChatMessage(User::query()->get()->first(), "Hello world", 1));
@@ -176,108 +57,13 @@ Route::middleware(['auth:sanctum'])
     });
 
 
-Route::post('/login', function (Request $request) {
-    $payload = $request->only(['email', 'password']);
-
-    $validator = Validator::make($payload, [
-        "email" => ["required", "string"],
-        "password" => ["required", "string"]
-    ]);
-
-    $validator->validate();
-
-    if (!Auth::attempt($payload)) {
-        return new JsonResponse([
-            "message" => "Invalid credentials"
-        ]);
-    }
-
-    // if (Auth::user()) {
-    //     return new JsonResponse([
-    //         "data" => [
-    //             "token" => User::query()->find(Auth::user()->id)->tokens()->where('personal_access_tokens.name', 'auth_token')->first()
-
-    //         ]
-    //     ]);
-    // }
-
-    $user = auth()->user();
-
-    $token = User::query()->find($user->id)->createToken('auth_token')->plainTextToken;
+Route::post('/login', [AuthController::class, 'login']);
 
 
-    $response = [
-        'status' => 'success',
-        'msg' => 'Login successfully',
-        'data' => [
-            'status_code' => 200,
-            'token' => $token,
-            'token_type' => 'Bearer',
-            'user_name' => $user->name,
-            'user_email' => $user->email,
-            'user_id' => $user->id,
-        ]
-    ];
-
-    return response()->json($response, 200);
-});
+Route::post('/register', [AuthController::class, 'register']);
 
 
-Route::post('/register', function (Request $request) {
-    $payload = [
-        "name" => $request->name,
-        "email" => $request->email,
-        "password" => $request->password,
-        "password_confirmation" => $request->password_confirmation
-    ];
-
-    Validator::make($payload, [
-        'name' => ['required', 'string', 'max:255'],
-        'email' => [
-            'required',
-            'string',
-            'email',
-            'max:255',
-            Rule::unique(User::class),
-        ],
-        'password' => ['required', 'string', Password::default(), 'confirmed']
-    ])->validate();
-
-
-    $user  =  User::create([
-        'name' => $payload['name'],
-        'email' => $payload['email'],
-        'password' => Hash::make($payload['password']),
-    ]);
-
-    $token = $user->createToken('auth_token')->plainTextToken;
-
-
-    $response = [
-        'status' => 'success',
-        'msg' => 'Registration successfull',
-        'data' => [
-            'status_code' => 200,
-            'token' => $token,
-            'token_type' => 'Bearer',
-            'user_name' => $user->name,
-            'user_email' => $user->email,
-            'user_id' => $user->id,
-        ]
-    ];
-
-    return response()->json($response, 200);
-});
-
-
-Route::post('/logout', function (Request $request) {
-    // Auth::user()->tokens()->delete();
-    dump(auth()->user()->id);
-    User::query()->find(Auth::id())->tokens()->delete();
-    return new JsonResponse([
-        "message" => "logged out"
-    ]);
-})->middleware(['auth:sanctum']);
+Route::post('/logout', [AuthController::class, 'logout'])->middleware(['auth:sanctum']);
 
 
 
